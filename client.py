@@ -126,7 +126,7 @@ def main(sc, origin, pubkey, subkey, channel):
     log_parser.start()
 
     subscriber = threading.Thread(target=subscribe, args=(origin, subkey, channel))
-    subscriber.daemon=True
+    subscriber.daemon = True
     subscriber.start()
 
     presence_thread = threading.Thread(target=presence, args=(origin, subkey, channel, presence_win))
