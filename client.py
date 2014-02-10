@@ -19,6 +19,7 @@ PRESENCE_LINES = PRESENCE_WINDOW_LINES + 3 # Window + headings + borders
 
 HISTORY_WINDOW_LINES = 5
 HISTORY_LINES = HISTORY_WINDOW_LINES + 3
+HISTORY_Y = HEADER_LINES + SUB_LINES + PUB_LINES + PRESENCE_LINES + 2
 
 LOG_QUEUE = Queue.Queue()
 MSG_QUEUE = Queue.Queue()
@@ -52,7 +53,7 @@ class Window:
     def write(self, message):
         self.messages.append(message)
         self.scroll(-999999) # Scroll back to top
-        self.scroll(len(self.messages) - self.height) # Scroll to bottom of messages
+        self.scroll(len(self.messages) - self.height + 2) # Scroll to bottom of messages
         self.draw_messages(self.cursor)
 
     # Draws the message log from a given starting cursor
@@ -98,9 +99,14 @@ def main(sc, origin, pubkey, subkey, channel):
 
     draw_header(sc, origin, pubkey, subkey, channel)
 
+    # Draw winows
     sub_win = Window(sc, HEADER_LINES + 1, SUB_WINDOW_LINES, "Messages:")
-    history_win = Window(sc, HEADER_LINES + SUB_LINES + PUB_LINES + PRESENCE_LINES + 2, HISTORY_LINES, "History:")
-    presence_win = Window(sc, HEADER_LINES + SUB_LINES + PUB_LINES + 2, PRESENCE_LINES, "Presence:")
+    presence_win = Window(sc, HEADER_LINES + SUB_LINES + PUB_LINES + 1, PRESENCE_LINES, "Presence:")
+    history_win = Window(sc, HISTORY_Y, HISTORY_LINES, "History:")
+
+    # Draw history controls
+    sc.addstr(HISTORY_Y, 10, "Refresh", curses.color_pair(1))
+    sc.addstr(HISTORY_Y, 18, "(h)", curses.color_pair(2))
 
     pub_win, pub_text = draw_pubbox(sc)
 
@@ -146,6 +152,9 @@ def main(sc, origin, pubkey, subkey, channel):
 
         elif cmd == ord('r'):
             publish(origin, pubkey, subkey, channel, pub_text.gather())
+
+        elif cmd == ord('h'):
+            history(origin, subkey, channel, history_win)
 
         elif cmd == curses.KEY_UP:
             sub_win.scroll(-1)
