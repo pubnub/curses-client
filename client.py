@@ -17,20 +17,28 @@ PUB_LINES = PUB_WINDOW_LINES + 3 # Window + headings + borders
 PRESENCE_WINDOW_LINES = 5
 PRESENCE_LINES = PRESENCE_WINDOW_LINES + 3 # Window + headings + borders
 
+HISTORY_WINDOW_LINES = 5
+HISTORY_LINES = HISTORY_WINDOW_LINES + 3
+
 LOG_QUEUE = Queue.Queue()
 MSG_QUEUE = Queue.Queue()
 
 KEY_ESC = 27
 COLOR_DEFAULT = -1
-MSG_BUFFER = []
-MSG_CURSOR = 0
 
 class Window:
-    def __init__(self, sc, offset, height):
+    def __init__(self, sc, offset, height, title=None):
+        if title != None:
+            sc.addstr(offset, 0, title, curses.color_pair(1))
+            self.title = title
+
+        self.cursor = 0
+        self.messages = []
         self.win = None
-        self.winY = 1
+        self.height = height
         self.draw(sc, offset, height)
 
+    # Assign and draw the window + border
     def draw(self, sc, offset, height):
         maxy, maxx = sc.getmaxyx()
 
@@ -40,12 +48,41 @@ class Window:
 
         return self.win
 
+    # Writes a new message and scrolls to the bottom of the log
     def write(self, message):
-        self.win.addstr(self.winY, 1, message)
-        self.winY += 1
+        self.messages.append(message)
+        self.scroll(-999999) # Scroll back to top
+        self.scroll(len(self.messages) - self.height) # Scroll to bottom of messages
+        self.draw_messages(self.cursor)
+
+    # Draws the message log from a given starting cursor
+    def draw_messages(self, cursor=0):
+        self.cursor = cursor
+        maxy, maxx = self.win.getmaxyx()
+        num = cursor + maxy - 2
+        messages = self.messages[cursor:num]
+
+        self.win.erase()
+
+        for i, message in enumerate(messages):
+            filler = ' ' * (maxx - 2 - len(message))
+            self.win.addstr(i + 1, 1, message + filler)
+
         self.refresh()
 
+    # Scroll the text in a given direct i.e. scroll(1) or scroll(-1)
+    def scroll(self, amount=0):
+        self.cursor += amount
+        if self.cursor < 0:
+            self.cursor = 0
+
+        if len(self.messages) < self.cursor:
+            self.cursor = len(self.messages)
+
+        self.draw_messages(self.cursor)
+
     def refresh(self):
+        self.win.border()
         self.win.refresh()
 
 def main(sc, origin, pubkey, subkey, channel):
@@ -61,19 +98,18 @@ def main(sc, origin, pubkey, subkey, channel):
 
     draw_header(sc, origin, pubkey, subkey, channel)
 
-    sc.addstr(HEADER_LINES + 1, 0, "Messages:", curses.color_pair(1))
-    sub_win = Window(sc, HEADER_LINES + 1, SUB_WINDOW_LINES)
+    sub_win = Window(sc, HEADER_LINES + 1, SUB_WINDOW_LINES, "Messages:")
+    history_win = Window(sc, HEADER_LINES + SUB_LINES + PUB_LINES + PRESENCE_LINES + 2, HISTORY_LINES, "History:")
+    presence_win = Window(sc, HEADER_LINES + SUB_LINES + PUB_LINES + 2, PRESENCE_LINES, "Presence:")
 
     pub_win, pub_text = draw_pubbox(sc)
-
-    sc.addstr(HEADER_LINES + SUB_LINES + PUB_LINES + 2, 0, "Presence:", curses.color_pair(1))
-    presence_win = Window(sc, HEADER_LINES + SUB_LINES + PUB_LINES + 2, PRESENCE_LINES)
 
     # Setup stdscr
     sc.refresh()
     sub_win.refresh()
     pub_win.refresh()
     presence_win.refresh()
+    history_win.refresh()
 
     logger = threading.Thread(target=message_log, args=(sub_win,))
     logger.daemon=True
@@ -90,6 +126,8 @@ def main(sc, origin, pubkey, subkey, channel):
     presence_thread = threading.Thread(target=presence, args=(origin, subkey, channel, presence_win))
     presence_thread.daemon = True
     presence_thread.start()
+
+    history(origin, subkey, channel, history_win)
 
     while True:
         cmd = sc.getch()
@@ -110,14 +148,10 @@ def main(sc, origin, pubkey, subkey, channel):
             publish(origin, pubkey, subkey, channel, pub_text.gather())
 
         elif cmd == curses.KEY_UP:
-            if len(MSG_BUFFER) <= SUB_MSGS: continue
-            MSG_CURSOR = max(0, MSG_CURSOR - 1)
-            draw_messages(sub_win, MSG_BUFFER[MSG_CURSOR:MSG_CURSOR+SUB_MSGS])
+            sub_win.scroll(-1)
 
         elif cmd == curses.KEY_DOWN:
-            if len(MSG_BUFFER) <= SUB_MSGS: continue
-            MSG_CURSOR = max(len(MSG_BUFFER) - 1, MSG_CURSOR + 1)
-            draw_messages(sub_win, MSG_BUFFER[MSG_CURSOR:MSG_CURSOR+SUB_MSGS])
+            sub_win.scroll(1)
 
 def parse_logs(sc):
     global LOG_QUEUE
@@ -125,7 +159,8 @@ def parse_logs(sc):
     while True:
         message = LOG_QUEUE.get()
         maxy, maxx = sc.getmaxyx()
-        sc.addstr(maxy - 1, 0, message, curses.color_pair(4))
+        filler = ' ' * (maxx - 2 - len(message))
+        sc.addstr(maxy - 1, 0, message + filler, curses.color_pair(4))
         sc.refresh()
 
 def log(message):
@@ -216,15 +251,6 @@ def draw_pubbox(sc, pub_win=None):
 
     return pub_win, tp
 
-def draw_messages(win, messages):
-    maxy, maxx = win.win.getmaxyx()
-
-    for i, message in enumerate(messages):
-        filler = ' ' * (maxx-2 - len(message))
-        win.win.addstr(i+1, 1, message + filler)
-
-    win.refresh()
-
 def subscribe(origin, subkey, channel):
     global MSG_QUEUE
     timetoken = '0'
@@ -265,17 +291,30 @@ def presence(origin, subkey, channel, win):
         for msg in map(json.dumps, messages):
             win.write(msg)
 
+def history(origin, subkey, channel, win):
+    timetoken = '0'
+    response = None
+
+    parts = urllib2.quote('/'.join([origin, 'v2', 'history', 'sub-key', subkey, 'channel', channel]))
+    parts += '?stringtoken=true&count=100&reverse=false&pnsdk=PubNub-JS-Web%2F3.5.48'
+
+    try:
+        response = urllib2.urlopen('http://%s' % (parts), timeout=300).read()
+    except urllib2.URLError:
+        pass
+
+    if response:
+        messages = json.loads(response)
+
+        for msg in map(json.dumps, messages[0]):
+            win.write(msg)
+
 def message_log(win):
-    global MSG_BUFFER
-    global MSG_CURSOR
     global MSG_QUEUE
 
     while True:
         message = MSG_QUEUE.get()
-        if MSG_CURSOR == len(MSG_BUFFER) - SUB_MSGS - 1:
-            MSG_CURSOR += 1
-        MSG_BUFFER.append(message)
-        draw_messages(win, MSG_BUFFER[MSG_CURSOR:MSG_CURSOR+SUB_MSGS])
+        win.write(message)
 
 if __name__ == '__main__':
     import argparse
