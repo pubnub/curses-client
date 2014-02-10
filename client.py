@@ -14,14 +14,39 @@ SUB_MSGS = SUB_WINDOW_LINES - 2
 PUB_WINDOW_LINES = 10
 PUB_LINES = PUB_WINDOW_LINES + 3 # Window + headings + borders
 
-LOG_WINDOW_LINES = 5
-LOG_LINES = LOG_WINDOW_LINES + 3 # Window + headings + borders
+PRESENCE_WINDOW_LINES = 5
+PRESENCE_LINES = PRESENCE_WINDOW_LINES + 3 # Window + headings + borders
 
+LOG_QUEUE = Queue.Queue()
 MSG_QUEUE = Queue.Queue()
+
 KEY_ESC = 27
 COLOR_DEFAULT = -1
 MSG_BUFFER = []
 MSG_CURSOR = 0
+
+class Window:
+    def __init__(self, sc, offset, height):
+        self.win = None
+        self.winY = 1
+        self.draw(sc, offset, height)
+
+    def draw(self, sc, offset, height):
+        maxy, maxx = sc.getmaxyx()
+
+        if self.win is None:
+            self.win = curses.newwin(height, maxx, offset + 1, 0)
+        self.win.border()
+
+        return self.win
+
+    def write(self, message):
+        self.win.addstr(self.winY, 1, message)
+        self.winY += 1
+        self.refresh()
+
+    def refresh(self):
+        self.win.refresh()
 
 def main(sc, origin, pubkey, subkey, channel):
     global MSG_CURSOR
@@ -32,25 +57,39 @@ def main(sc, origin, pubkey, subkey, channel):
     curses.init_pair(1, curses.COLOR_WHITE, COLOR_DEFAULT)
     curses.init_pair(2, curses.COLOR_CYAN, COLOR_DEFAULT)
     curses.init_pair(3, curses.COLOR_YELLOW, COLOR_DEFAULT)
+    curses.init_pair(4, curses.COLOR_MAGENTA, COLOR_DEFAULT)
 
     draw_header(sc, origin, pubkey, subkey, channel)
-    sub_win = draw_subbox(sc)
-    log_win = draw_logbox(sc)
+
+    sc.addstr(HEADER_LINES + 1, 0, "Messages:", curses.color_pair(1))
+    sub_win = Window(sc, HEADER_LINES + 1, SUB_WINDOW_LINES)
+
     pub_win, pub_text = draw_pubbox(sc)
+
+    sc.addstr(HEADER_LINES + SUB_LINES + PUB_LINES + 2, 0, "Presence:", curses.color_pair(1))
+    presence_win = Window(sc, HEADER_LINES + SUB_LINES + PUB_LINES + 2, PRESENCE_LINES)
 
     # Setup stdscr
     sc.refresh()
-    log_win.refresh()
     sub_win.refresh()
     pub_win.refresh()
+    presence_win.refresh()
 
     logger = threading.Thread(target=message_log, args=(sub_win,))
     logger.daemon=True
     logger.start()
 
+    log_parser = threading.Thread(target=parse_logs, args=(sc,))
+    log_parser.daemon = True
+    log_parser.start()
+
     subscriber = threading.Thread(target=subscribe, args=(origin, subkey, channel))
     subscriber.daemon=True
     subscriber.start()
+
+    presence_thread = threading.Thread(target=presence, args=(origin, subkey, channel, presence_win))
+    presence_thread.daemon = True
+    presence_thread.start()
 
     while True:
         cmd = sc.getch()
@@ -65,10 +104,10 @@ def main(sc, origin, pubkey, subkey, channel):
         elif cmd == ord('p'):
             #TODO: redrawing all is overkill
             pub_win, pub_text = draw_pubbox(sc)
-            publish(origin, pubkey, subkey, channel, pub_text.edit(), log_win)
+            publish(origin, pubkey, subkey, channel, pub_text.edit())
 
         elif cmd == ord('r'):
-            publish(origin, pubkey, subkey, channel, pub_text.gather(), log_win)
+            publish(origin, pubkey, subkey, channel, pub_text.gather())
 
         elif cmd == curses.KEY_UP:
             if len(MSG_BUFFER) <= SUB_MSGS: continue
@@ -80,22 +119,34 @@ def main(sc, origin, pubkey, subkey, channel):
             MSG_CURSOR = max(len(MSG_BUFFER) - 1, MSG_CURSOR + 1)
             draw_messages(sub_win, MSG_BUFFER[MSG_CURSOR:MSG_CURSOR+SUB_MSGS])
 
-        log_win.refresh()
+def parse_logs(sc):
+    global LOG_QUEUE
 
-def publish(origin, pubkey, subkey, channel, data, log_win):
+    while True:
+        message = LOG_QUEUE.get()
+        maxy, maxx = sc.getmaxyx()
+        sc.addstr(maxy - 1, 0, message, curses.color_pair(4))
+        sc.refresh()
+
+def log(message):
+    global LOG_QUEUE
+
+    LOG_QUEUE.put(message)
+
+def publish(origin, pubkey, subkey, channel, data):
     try:
         data = json.dumps(json.loads(data))
     except ValueError as e:
         # TODO: expose this in some way
-        log_win.addstr("Incorrect JSON {0}".format('\n'))
-        pass
+        log("Incorrect JSON")
+        return False
 
     path = '/'.join([origin, 'publish', pubkey, subkey, '0', channel, '0', data])
 
     try:
         response = urllib2.urlopen('http://%s' % urllib2.quote(path)).read()
     except urllib2.URLError as e:
-        log_win.addstr("Error publishing: {0} {1}".format(e.reason, '\n'))
+        log("Error publishing: {0}".format(e.reason))
         response = ""
         pass
 
@@ -149,25 +200,6 @@ def draw_header(sc, origin, pubkey, subkey, channel):
         sc.addstr(2, offset + len(key), value, curses.color_pair(2))
         offset += (len(key) + len(value))
 
-def draw_logbox(sc, log_win=None):
-    maxy, maxx = sc.getmaxyx()
-    offset = HEADER_LINES + SUB_LINES + PUB_LINES + 1
-
-    if log_win is None:
-        log_win = curses.newwin(PUB_WINDOW_LINES, maxx-2, offset+2, 1)
-    log_win.border()
-
-    return log_win
-
-def draw_subbox(sc):
-    maxy, maxx = sc.getmaxyx()
-    offset = HEADER_LINES + 1
-
-    sc.addstr(offset, 0, "Messages:", curses.color_pair(1))
-    win = curses.newwin(SUB_WINDOW_LINES, maxx, offset+1, 0)
-    win.border()
-    return win
-
 def draw_pubbox(sc, pub_win=None):
     maxy, maxx = sc.getmaxyx()
     offset = HEADER_LINES + SUB_LINES + 1
@@ -181,16 +213,15 @@ def draw_pubbox(sc, pub_win=None):
         pub_win = curses.newwin(PUB_WINDOW_LINES, maxx-2, offset+2, 1)
 
     tp = my_textbox.MyTextbox(pub_win)
-    #tp = curses.textpad.Textbox(pub_win)
 
     return pub_win, tp
 
 def draw_messages(win, messages):
-    maxy, maxx = win.getmaxyx()
+    maxy, maxx = win.win.getmaxyx()
 
     for i, message in enumerate(messages):
         filler = ' ' * (maxx-2 - len(message))
-        win.addstr(i+1, 1, message + filler)
+        win.win.addstr(i+1, 1, message + filler)
 
     win.refresh()
 
@@ -212,6 +243,27 @@ def subscribe(origin, subkey, channel):
 
         for msg in map(json.dumps, messages):
             MSG_QUEUE.put(msg)
+
+def presence(origin, subkey, channel, win):
+    global MSG_QUEUE
+    timetoken = '0'
+    response = None
+
+    channel = channel + '-pnpres'
+
+    parts = urllib2.quote('/'.join([origin, 'subscribe', subkey, channel,'0']))
+    while True:
+        try:
+            response = urllib2.urlopen(
+                'http://%s/%s' % (parts, timetoken), timeout=300).read()
+        except urllib2.URLError:
+            pass
+
+        if response:
+            messages, timetoken = json.loads(response)
+
+        for msg in map(json.dumps, messages):
+            win.write(msg)
 
 def message_log(win):
     global MSG_BUFFER
