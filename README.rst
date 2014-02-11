@@ -7,13 +7,14 @@ PubNub API. It allows you to publish, subscribe, see presence,
 and see history right from a terminal window.
 
 PubNub is a globally scaled real-time network. We provide real-time
-as a service to developers across the globe. Check out <http://pubnub.com>
+as a service to developers across the globe. Check out http://pubnub.com
 to try it out for free today!
 
 Usage
 -----
-::
-    pubnub-curses
+Simply run the tool from the command line: ::
+
+  pubnub-curses
 
 -p, --pubkey      PubNub account publish key (default demo)
 -s, --subkey      PubNub account subscribe key (default demo)
@@ -22,11 +23,11 @@ Usage
 
 Contributing
 ------------
-All the source code is on our github page: <https://github.com/pubnub/curses-client>
+All the source code is on our github page: https://github.com/pubnub/curses-client
 
 Issues and pull requests are welcome!
 
 License
 -------
 
-MIT licensed. See the LICENSE file for more deatils: <https://github.com/pubnub/curses-client/blob/master/LICENSE>
+MIT licensed. See the LICENSE file for more deatils: https://github.com/pubnub/curses-client/blob/master/LICENSE

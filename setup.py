@@ -2,6 +2,11 @@
 
 from distutils.core import setup
 
+def read(fname):
+    with open(fname) as fp:
+        content = fp.read()
+    return content
+
 setup(
   name='pubnub_curses',
   version='1.2',
