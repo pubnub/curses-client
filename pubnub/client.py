@@ -1,3 +1,5 @@
+# coding=UTF-8
+
 import curses
 import curses.textpad
 import json
@@ -6,13 +8,18 @@ import threading
 import urllib2
 import my_textbox
 
+from window import Window
+from loop_timer import LoopTimer
+
 HEADER_LINES = 3
 SUB_WINDOW_LINES = 20
-SUB_LINES = SUB_WINDOW_LINES + 3 # Window + headings + borders
+SUB_LINES = SUB_WINDOW_LINES + 1 # Window + headings + borders
 SUB_MSGS = SUB_WINDOW_LINES - 2
+SUB_Y = HEADER_LINES + 1
 
 PUB_WINDOW_LINES = 10
 PUB_LINES = PUB_WINDOW_LINES + 3 # Window + headings + borders
+PUB_Y = HEADER_LINES + SUB_LINES + 1
 
 PRESENCE_WINDOW_LINES = 5
 PRESENCE_LINES = PRESENCE_WINDOW_LINES + 3 # Window + headings + borders
@@ -27,67 +34,18 @@ MSG_QUEUE = Queue.Queue()
 KEY_ESC = 27
 COLOR_DEFAULT = -1
 
-class Window:
-    def __init__(self, sc, offset, height, title=None):
-        if title != None:
-            sc.addstr(offset, 0, title, curses.color_pair(1))
-            self.title = title
+# Starts a curses wrapper with the given arguments
+def main(origin, pubkey, subkey, channel):
+    curses.wrapper(start_client, origin, pubkey, subkey, channel)
+    return 1
 
-        self.cursor = 0
-        self.messages = []
-        self.win = None
-        self.height = height
-        self.draw(sc, offset, height)
-
-    # Assign and draw the window + border
-    def draw(self, sc, offset, height):
-        maxy, maxx = sc.getmaxyx()
-
-        if self.win is None:
-            self.win = curses.newwin(height, maxx, offset + 1, 0)
-        self.win.border()
-
-        return self.win
-
-    # Writes a new message and scrolls to the bottom of the log
-    def write(self, message):
-        self.messages.append(message)
-        self.scroll(-999999) # Scroll back to top
-        self.scroll(len(self.messages) - self.height + 2) # Scroll to bottom of messages
-        self.draw_messages(self.cursor)
-
-    # Draws the message log from a given starting cursor
-    def draw_messages(self, cursor=0):
-        self.cursor = cursor
-        maxy, maxx = self.win.getmaxyx()
-        num = cursor + maxy - 2
-        messages = self.messages[cursor:num]
-
-        self.win.erase()
-
-        for i, message in enumerate(messages):
-            filler = ' ' * (maxx - 2 - len(message))
-            self.win.addstr(i + 1, 1, message + filler)
-
-        self.refresh()
-
-    # Scroll the text in a given direct i.e. scroll(1) or scroll(-1)
-    def scroll(self, amount=0):
-        self.cursor += amount
-        if self.cursor < 0:
-            self.cursor = 0
-
-        if len(self.messages) < self.cursor:
-            self.cursor = len(self.messages)
-
-        self.draw_messages(self.cursor)
-
-    def refresh(self):
-        self.win.border()
-        self.win.refresh()
-
-def main(sc, origin, pubkey, subkey, channel):
+def start_client(sc, origin, pubkey, subkey, channel):
     global MSG_CURSOR
+    global AUTO_PUBLISH
+
+    import locale
+    locale.setlocale(locale.LC_ALL, '')
+    code = locale.getpreferredencoding()
 
     MAXY, MAXX = sc.getmaxyx()
 
@@ -104,9 +62,23 @@ def main(sc, origin, pubkey, subkey, channel):
     presence_win = Window(sc, HEADER_LINES + SUB_LINES + PUB_LINES + 1, PRESENCE_LINES, "Presence:")
     history_win = Window(sc, HISTORY_Y, HISTORY_LINES, "History:")
 
+    # Draw Subscribe controls
+    sc.addstr(SUB_Y, 22, "Scroll", curses.color_pair(1))
+    sc.addch(SUB_Y, 29, curses.ACS_UARROW, curses.color_pair(2))
+    sc.addch(SUB_Y, 31, curses.ACS_DARROW, curses.color_pair(2))
+
     # Draw history controls
     sc.addstr(HISTORY_Y, 10, "Refresh", curses.color_pair(1))
     sc.addstr(HISTORY_Y, 18, "(h)", curses.color_pair(2))
+    sc.addstr(HISTORY_Y, 22, "Scroll", curses.color_pair(1))
+    sc.addstr(HISTORY_Y, 29, "(j)", curses.color_pair(2))
+    sc.addstr(HISTORY_Y, 33, "(k)", curses.color_pair(2))
+
+    # Draw publish controls
+    sc.addstr(PUB_Y, 0, "Publish:          Re-Publish last", curses.color_pair(1))
+    sc.addstr(PUB_Y, 9, "(Ctrl-G)", curses.color_pair(2))
+    sc.addstr(PUB_Y, 34, "(r)", curses.color_pair(2))
+    auto_publish_state(sc, "info")
 
     pub_win, pub_text = draw_pubbox(sc)
 
@@ -141,26 +113,64 @@ def main(sc, origin, pubkey, subkey, channel):
         if cmd == ord('q'):
             break
 
-        elif cmd == KEY_ESC:
-            MSG_CURSOR = len(MSG_BUFFER) - SUB_MSGS - 1
-            draw_messages(sub_win, MSG_BUFFER[MSG_CURSOR:MSG_CURSOR+SUB_MSGS])
+        # Clear windows
+        elif cmd == ord('c'):
+            sub_win.clear()
+            history_win.clear()
+            presence_win.clear()
 
         elif cmd == ord('p'):
             #TODO: redrawing all is overkill
             pub_win, pub_text = draw_pubbox(sc)
             publish(origin, pubkey, subkey, channel, pub_text.edit())
 
+        # Re-publish
         elif cmd == ord('r'):
             publish(origin, pubkey, subkey, channel, pub_text.gather())
 
-        elif cmd == ord('h'):
-            history(origin, subkey, channel, history_win)
-
+        # Subscribe pane scrolling
         elif cmd == curses.KEY_UP:
             sub_win.scroll(-1)
-
         elif cmd == curses.KEY_DOWN:
             sub_win.scroll(1)
+
+        # Auto publishing
+        elif cmd == ord('a'):
+            auto_publish_state(sc, "editing")
+            sc.refresh()
+
+            text = pub_text.edit()
+            loop_timer = LoopTimer(5.0, publish, args=(origin, pubkey, subkey, channel, text))
+            loop_timer.start()
+
+            auto_publish_state(sc, "publishing")
+
+            ch = sc.getch()
+            loop_timer.cancel()
+            loop_timer = None
+
+            auto_publish_state(sc, "info")
+
+        # History controls
+        elif cmd == ord('h'):
+            history(origin, subkey, channel, history_win)
+        elif cmd == ord('j'):
+            history_win.scroll(-1)
+        elif cmd == ord('k'):
+            history_win.scroll(1)
+
+    return 1
+
+def auto_publish_state(sc, state):
+    if state == "info":
+        sc.addstr(PUB_Y, 38, "Auto-Publish ", curses.color_pair(1))
+        sc.addstr(PUB_Y, 51, "(a)               ", curses.color_pair(2))
+    elif state == "editing":
+        sc.addstr(PUB_Y, 38, "Auto-Publish", curses.color_pair(1))
+        sc.addstr(PUB_Y, 51, "(editing...)", curses.color_pair(3))
+    elif state == "publishing":
+        sc.addstr(PUB_Y, 38, "Publishing! ", curses.color_pair(3))
+        sc.addstr(PUB_Y, 50, "(any key to stop)", curses.color_pair(3))
 
 def parse_logs(sc):
     global LOG_QUEUE
@@ -234,6 +244,7 @@ def draw_header(sc, origin, pubkey, subkey, channel):
     legends = [
         ('Compose Publish: ', '(p)'),
         ('Quit: ', '(q)'),
+        ('Clear: ', '(c)')
     ]
 
     offset = 0
@@ -249,11 +260,7 @@ def draw_pubbox(sc, pub_win=None):
     offset = HEADER_LINES + SUB_LINES + 1
 
     if pub_win is None:
-        # TODO: use draw_header
-        sc.addstr(offset, 0, "Publish:          Re-Publish last", curses.color_pair(1))
-        sc.addstr(offset, 9, "(Ctrl-G)", curses.color_pair(2))
-        sc.addstr(offset, 34, "(r)", curses.color_pair(2))
-        curses.textpad.rectangle(sc, offset+1,0, offset+PUB_WINDOW_LINES+2, maxx-1)
+        curses.textpad.rectangle(sc, offset+1 , 0, offset+PUB_WINDOW_LINES+2, maxx-1)
         pub_win = curses.newwin(PUB_WINDOW_LINES, maxx-2, offset+2, 1)
 
     tp = my_textbox.MyTextbox(pub_win)
@@ -335,5 +342,5 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--origin', default='pubsub.pubnub.com')
     args = parser.parse_args()
 
-    curses.wrapper(main, args.origin, args.pubkey, args.subkey, args.channel)
+    main(args.origin, args.pubkey, args.subkey, args.channel)
 
