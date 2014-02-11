@@ -155,9 +155,9 @@ def start_client(sc, origin, pubkey, subkey, channel):
         elif cmd == ord('h'):
             history(origin, subkey, channel, history_win)
         elif cmd == ord('j'):
-            history_win.scroll(-1)
-        elif cmd == ord('k'):
             history_win.scroll(1)
+        elif cmd == ord('k'):
+            history_win.scroll(-1)
 
     return 1
 

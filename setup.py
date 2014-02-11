@@ -9,7 +9,7 @@ def read(fname):
 
 setup(
   name='pubnub_curses',
-  version='1.2',
+  version='1.3',
   description='PubNub Curses Terminal Client',
   long_description=read('README.rst'),
   license=read('LICENSE'),
