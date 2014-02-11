@@ -187,38 +187,6 @@ def log(message):
 
     LOG_QUEUE.put(message)
 
-def publish(origin, pubkey, subkey, channel, data):
-    try:
-        data = json.dumps(json.loads(data))
-    except ValueError as e:
-        # TODO: expose this in some way
-        log("Incorrect JSON")
-        return False
-
-    path = '/'.join([origin, 'publish', pubkey, subkey, '0', channel, '0', data])
-
-    try:
-        response = urllib2.urlopen('http://%s' % urllib2.quote(path)).read()
-    except urllib2.URLError as e:
-        log("Error publishing: {0}".format(e.reason))
-        response = ""
-        pass
-
-    return response
-
-def draw_colors(sc):
-    colors = 16
-
-    for i in range(colors):
-        curses.init_pair(i+1, i, i)
-
-    for i in range(colors):
-        sc.addstr(i, 0, str(i))
-        sc.addstr(i, 5, "X" * 20, curses.color_pair(i+1))
-
-    sc.refresh()
-    sc.getch()
-
 def draw_header(sc, origin, pubkey, subkey, channel):
     maxy, maxx = sc.getmaxyx()
 
@@ -267,6 +235,25 @@ def draw_pubbox(sc, pub_win=None):
 
     return pub_win, tp
 
+def publish(origin, pubkey, subkey, channel, data):
+    try:
+        data = json.dumps(json.loads(data))
+    except ValueError as e:
+        # TODO: expose this in some way
+        log("Incorrect JSON")
+        return False
+
+    path = '/'.join([origin, 'publish', pubkey, subkey, '0', channel, '0', data])
+
+    try:
+        response = urllib2.urlopen('http://%s' % urllib2.quote(path)).read()
+    except urllib2.URLError as e:
+        log("Error publishing: {0}".format(e.reason))
+        response = ""
+        pass
+
+    return response
+
 def subscribe(origin, subkey, channel):
     global MSG_QUEUE
     timetoken = '0'
@@ -277,7 +264,8 @@ def subscribe(origin, subkey, channel):
         try:
             response = urllib2.urlopen(
                 'http://%s/%s' % (parts, timetoken), timeout=300).read()
-        except urllib2.URLError:
+        except urllib2.URLError as e:
+            log("Error subscribing: {0}".format(e.reason))
             pass
 
         if response:
@@ -298,7 +286,8 @@ def presence(origin, subkey, channel, win):
         try:
             response = urllib2.urlopen(
                 'http://%s/%s' % (parts, timetoken), timeout=300).read()
-        except urllib2.URLError:
+        except urllib2.URLError as e:
+            log("Error subscribing: {0}".format(e.reason))
             pass
 
         if response:
@@ -316,7 +305,8 @@ def history(origin, subkey, channel, win):
 
     try:
         response = urllib2.urlopen('http://%s' % (parts), timeout=300).read()
-    except urllib2.URLError:
+    except urllib2.URLError as e:
+        log("Error subscribing: {0}".format(e.reason))
         pass
 
     if response:
