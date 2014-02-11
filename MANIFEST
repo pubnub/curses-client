@@ -6,8 +6,6 @@ setup.py
 bin/pubnub-curses
 pubnub_curses/__init__.py
 pubnub_curses/client.py
-pubnub_curses/cmdline.py
 pubnub_curses/loop_timer.py
 pubnub_curses/my_textbox.py
-pubnub_curses/pubnub.py
 pubnub_curses/window.py
