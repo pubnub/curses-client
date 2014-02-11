@@ -1,6 +1,6 @@
-===========
+=======================
 PubNub Curses Client
-===========
+=======================
 
 The PubNub Curses Client provides easy terminal access to the
 PubNub API. It allows you to publish, subscribe, see presence,
@@ -11,7 +11,7 @@ as a service to developers across the globe. Check out <http://pubnub.com>
 to try it out for free today!
 
 Usage
-=====
+-----
 ::
     pubnub-curses
 
@@ -21,7 +21,12 @@ Usage
 -o, --origin      Origin to publish and subscribe to (default pubsub.pubnub.com)
 
 Contributing
-============
+------------
 All the source code is on our github page: <https://github.com/pubnub/curses-client>
 
 Issues and pull requests are welcome!
+
+License
+-------
+
+MIT licensed. See the LICENSE file for more deatils: <https://github.com/pubnub/curses-client/blob/master/LICENSE>
