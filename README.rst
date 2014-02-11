@@ -14,8 +14,9 @@ Usage
 -----
 Simply run the tool from the command line: ::
 
-  pubnub-curses
+  pubnub-curses <options>
 
+--help            See the help information
 -p, --pubkey      PubNub account publish key (default demo)
 -s, --subkey      PubNub account subscribe key (default demo)
 -c, --channel     PubNub channel to listen and publish to (default my_channel)

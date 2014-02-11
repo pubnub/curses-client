@@ -12,6 +12,6 @@ try:
   parser.add_argument('-o', '--origin', default='pubsub.pubnub.com')
   args = parser.parse_args()
 
-  sys.exit(pubnub.client.main(args.origin, args.pubkey, args.subkey, args.channel))
+  sys.exit(pubnub_curses.client.main(args.origin, args.pubkey, args.subkey, args.channel))
 except KeyboardInterrupt:
   sys.exit(1)
