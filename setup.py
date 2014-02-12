@@ -2,17 +2,12 @@
 
 from distutils.core import setup
 
-def read(fname):
-    with open(fname) as fp:
-        content = fp.read()
-    return content
-
 setup(
   name='pubnub_curses',
   version='1.5',
   description='PubNub Curses Terminal Client',
-  long_description=read('README.rst'),
-  license=read('LICENSE'),
+  long_description=open('README.rst').read(),
+  license=open('LICENSE').read(),
   author='Dan Ristic',
   author_email='danr@pubnub.com',
   url='http://pubnub.com',
