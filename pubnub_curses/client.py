@@ -43,6 +43,7 @@ def start_client(sc, origin, pubkey, subkey, channel):
     global MSG_CURSOR
     global AUTO_PUBLISH
 
+    # Set locale encoding
     import locale
     locale.setlocale(locale.LC_ALL, '')
     code = locale.getpreferredencoding()
@@ -54,6 +55,12 @@ def start_client(sc, origin, pubkey, subkey, channel):
     curses.init_pair(2, curses.COLOR_CYAN, COLOR_DEFAULT)
     curses.init_pair(3, curses.COLOR_YELLOW, COLOR_DEFAULT)
     curses.init_pair(4, curses.COLOR_MAGENTA, COLOR_DEFAULT)
+
+    # Check for min terminal height
+    if MAXY < 49:
+        sc.addstr(0, 0, "Your terminal window is too small. Please make it taller and try again. Press any key to continue...", curses.color_pair(3))
+        sc.getch()
+        return 1
 
     draw_header(sc, origin, pubkey, subkey, channel)
 
