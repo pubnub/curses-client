@@ -4,7 +4,7 @@ from distutils.core import setup
 
 setup(
   name='pubnub_curses',
-  version='1.5.1',
+  version='1.5.2',
   description='PubNub Curses Terminal Client',
   long_description=open('README.rst').read(),
   license=open('LICENSE').read(),
