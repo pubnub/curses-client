@@ -12,12 +12,12 @@ from window import Window
 from loop_timer import LoopTimer
 
 HEADER_LINES = 3
-SUB_WINDOW_LINES = 20
+SUB_WINDOW_LINES = 14
 SUB_LINES = SUB_WINDOW_LINES + 1 # Window + headings + borders
 SUB_MSGS = SUB_WINDOW_LINES - 2
 SUB_Y = HEADER_LINES + 1
 
-PUB_WINDOW_LINES = 10
+PUB_WINDOW_LINES = 5
 PUB_LINES = PUB_WINDOW_LINES + 3 # Window + headings + borders
 PUB_Y = HEADER_LINES + SUB_LINES + 1
 
@@ -57,7 +57,7 @@ def start_client(sc, origin, pubkey, subkey, channel):
     curses.init_pair(4, curses.COLOR_MAGENTA, COLOR_DEFAULT)
 
     # Check for min terminal height
-    if MAXY < 49:
+    if MAXY < 46:
         sc.addstr(0, 0, "Your terminal window is too small. Please make it taller and try again. Press any key to continue...", curses.color_pair(3))
         sc.getch()
         return 1
@@ -186,8 +186,9 @@ def parse_logs(sc):
         message = LOG_QUEUE.get()
         maxy, maxx = sc.getmaxyx()
         filler = ' ' * (maxx - 2 - len(message))
+        sc.move(maxy - 1, 0)
         sc.addstr(maxy - 1, 0, message + filler, curses.color_pair(4))
-        sc.refresh()
+        sc.redrawln(maxy - 1, 1)
 
 def log(message):
     global LOG_QUEUE
