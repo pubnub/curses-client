@@ -185,10 +185,13 @@ def parse_logs(sc):
     while True:
         message = LOG_QUEUE.get()
         maxy, maxx = sc.getmaxyx()
+
+        # Creating a new window every time is expensive, could be better
+        log_win = curses.newwin(1, maxx, maxy-1, 0)
         filler = ' ' * (maxx - 2 - len(message))
-        sc.move(maxy - 1, 0)
-        sc.addstr(maxy - 1, 0, message + filler, curses.color_pair(4))
-        sc.redrawln(maxy - 1, 1)
+        log_win.addstr(0, 0, message + filler, curses.color_pair(4))
+        log_win.refresh()
+        log_win = None
 
 def log(message):
     global LOG_QUEUE
@@ -250,6 +253,8 @@ def publish(origin, pubkey, subkey, channel, data):
         # TODO: expose this in some way
         log("Incorrect JSON")
         return False
+
+    log("")
 
     path = '/'.join([origin, 'publish', pubkey, subkey, '0', channel, '0', data])
 

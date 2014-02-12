@@ -1,3 +1,5 @@
-Version 1.5
+Version 1.5.2
 -----------
+ - 2014-02-12 Change size to fit in smaller screens. Fix log window.
+ 
  - 2014-02-11 Fix MANIFEST.in to include .rst files
